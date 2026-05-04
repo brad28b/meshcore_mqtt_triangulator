@@ -71,7 +71,10 @@ CREATE INDEX IF NOT EXISTS idx_obs_time     ON observations(timestamp);
 
 def open_db(path: str) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path)
+    # check_same_thread=False: paho-mqtt callbacks run on a worker thread but
+    # write to the same connection. SQLite's default threading mode is
+    # serialized so this is safe — each call is internally mutex-protected.
+    db = sqlite3.connect(path, check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
     db.execute("PRAGMA journal_mode = WAL")
@@ -181,7 +184,11 @@ def parse_packet_payload(payload: dict, fallback_pk: str | None) -> dict | None:
     if pkt_hash is None:
         return None
 
-    payload_type_raw = _first(payload, "payload_type", "type")
+    # Different brokers name this field differently — meshcore-bot's
+    # PacketCaptureService publishes 'packet_type', other variants use
+    # 'payload_type'. Note: `type` may exist but as a label like "PACKET",
+    # so try the numeric ones first.
+    payload_type_raw = _first(payload, "packet_type", "payload_type", "type")
     try:
         payload_type = int(payload_type_raw)
     except (TypeError, ValueError):
@@ -379,11 +386,17 @@ def main():
     LOG.info(f"Connecting to {mq['host']}:{mq['port']} via {mq['transport']} "
              f"(TLS={mq['use_tls']}, auth={'yes' if mq['username'] else 'no'})")
 
-    client = mqtt.Client(
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        client_id=mq["client_id"],
-        transport=mq["transport"],
-    )
+    # Using paho v1 callback API explicitly — works with both paho 1.x and 2.x
+    # and matches the de-facto signature most MeshCore-related codebases use.
+    try:
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
+            client_id=mq["client_id"],
+            transport=mq["transport"],
+        )
+    except (AttributeError, TypeError):
+        # paho 1.x has no callback_api_version kwarg
+        client = mqtt.Client(client_id=mq["client_id"], transport=mq["transport"])
     if mq["transport"] == "websockets":
         client.ws_set_options(path=mq["websocket_path"])
     if mq["use_tls"]:
@@ -395,15 +408,18 @@ def main():
     if mq["username"]:
         client.username_pw_set(mq["username"], mq["password"] or "")
 
-    def on_connect(c, userdata, flags, reason_code, properties=None):
-        if int(reason_code) == 0:
-            LOG.info("Connected; subscribing")
+    def on_connect(c, userdata, flags, rc):
+        # paho v1 callback signature — rc is a plain int (0 = success).
+        if rc == 0:
+            LOG.info("Connected; subscribing to %s and %s",
+                     mq["status_topic"], mq["packets_topic"])
             c.subscribe([(mq["status_topic"], 0), (mq["packets_topic"], 0)])
         else:
-            LOG.error(f"Connect failed: rc={reason_code}")
+            LOG.error(f"Connect failed: rc={rc}")
 
-    def on_disconnect(c, userdata, flags, reason_code, properties=None):
-        LOG.warning(f"Disconnected: rc={reason_code}; paho will reconnect")
+    def on_disconnect(c, userdata, rc):
+        if rc != 0:
+            LOG.warning(f"Disconnected: rc={rc}; paho will reconnect")
 
     def on_message(c, userdata, msg):
         try:
