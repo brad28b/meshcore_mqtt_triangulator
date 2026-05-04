@@ -23,7 +23,7 @@ Combine many such constraints from many receivers across many relay paths, take 
 ## Setup
 
 ```bash
-git clone <this repo>
+git clone https://github.com/brad28b/meshcore_mqtt_triangulator.git
 cd meshcore_mqtt_triangulator
 pip install -r requirements.txt
 cp config.example.ini config.ini
