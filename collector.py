@@ -274,7 +274,7 @@ class Handler:
         if pkt is None:
             return
 
-        # Decode ADVERTs to extract source pubkey + name + lat/lng
+        # Decode ADVERTs to extract source pubkey + name + lat/lng + inline path
         source_pk = None
         if pkt["payload_type"] == 4 and pkt["raw_hex"]:
             try:
@@ -285,6 +285,11 @@ class Handler:
                     role=adv.get("role"), lat=adv.get("lat"), lng=adv.get("lng"),
                     bump_advert=True,
                 )
+                # Brokers vary on whether they include the path field in the
+                # published JSON. The inline_path from the decoder is always
+                # authoritative — extract it from the raw packet bytes.
+                if pkt["path_json"] == "[]" and adv.get("inline_path"):
+                    pkt["path_json"] = json.dumps(adv["inline_path"])
             except (DecodeError, ValueError) as e:
                 LOG.debug(f"decode failed for hash={pkt['packet_hash']}: {e}")
                 self.counts["decode_fail"] += 1
