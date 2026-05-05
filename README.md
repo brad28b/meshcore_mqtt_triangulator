@@ -52,6 +52,7 @@ In production, run it under systemd, supervisord, or a Docker restart policy so 
 <img width="1303" height="296" alt="Screenshot 2026-05-05 144103" src="https://github.com/user-attachments/assets/d8388ad2-5e13-40af-9a7f-ee382e408299" />
 
 
+
 Reports every source pubkey for which there's enough data in the database to attempt triangulation, grouped into quality tiers based on how many distinct first-hop relays heard the source. Tier 1 (≥4 distinct first-hop relays) is the most reliable.
 
 ### 3. Locate a specific target
