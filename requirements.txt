@@ -1,3 +1,7 @@
 paho-mqtt>=2.0.0
 numpy>=1.24
 scipy>=1.11
+# Optional — only needed for terrain-aware mode. The locator works without
+# it, but `[terrain] dem_dir` in config.ini will be ignored unless rasterio
+# is installed.
+rasterio>=1.3

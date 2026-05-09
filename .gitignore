@@ -23,3 +23,7 @@ venv/
 
 # Logs
 *.log
+
+# Terrain DEM tiles — large GeoTIFFs, downloaded per-user via download_dem.py
+dem/
+*.tif
